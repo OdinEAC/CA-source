@@ -1,0 +1,94 @@
+#include <windows.h>
+#include <d3d9.h>
+#include <d3dx9.h>
+ 
+#pragma comment(lib, "d3d9.lib")
+#pragma comment(lib, "d3dx9.lib")
+ 
+// Address Combat Arms Brazil
+#define ADDR_D3D			0x95E8D0
+#define ADDR_MTBWCRET		0x3737FDE9
+#define ADDR_SHOWFPS		0x379B6E30
+#define ADDR_LTCLIENTEXE	0x491E20
+#define ADDR_GAMESTATUS		0x379ECCD0
+ 
+void RenderBackend( void )
+{
+	static LPDIRECT3DDEVICE9 pDevice;
+	
+	if(!pDevice)
+		pDevice = **(LPDIRECT3DDEVICE9 **)ADDR_D3D;
+	else
+	{
+		Menu(pDevice);
+                Hacks(pDevice);
+	}
+}
+ 
+static DWORD dwMTBWCRet = NULL;
+ 
+typedef int( WINAPI* MultiByteToWideChar_t )( UINT CodePage, DWORD dwFlags, LPCSTR lpMultiByteStr, int cbMultiByte, LPWSTR lpWideCharStr, int cchWideChar );
+MultiByteToWideChar_t pMultiByte;
+ 
+int WINAPI nMultiByteToWideChar( UINT CodePage, DWORD dwFlags, LPCSTR lpMultiByteStr, int cbMultiByte, LPWSTR lpWideCharStr, int cchWideChar )
+{
+	_asm pushad;
+ 
+	_asm
+	{
+		MOV EAX, [EBP+0x4]
+		MOV dwMTBWCRet, EAX
+	}
+	
+	if( dwMTBWCRet == ADDR_MTBWCRET )
+	{
+		lpMultiByteStr = ""; // null multi byte string, hide fraps actived and show render for menu and hacks
+ 
+		RenderBackend();		
+	}
+ 
+	_asm popad;
+ 
+	return pMultiByte( CodePage, dwFlags, lpMultiByteStr, cbMultiByte, lpWideCharStr, cchWideChar );
+}
+ 
+void *DetourCreateE9( BYTE *src, const BYTE *dst, const int len )
+{
+	DWORD dwBack;	
+	BYTE *jmp = (BYTE*)malloc( len+5 );
+	memcpy( jmp, src, len );
+	jmp += len;
+	jmp[0] = 0xE9;
+	*(DWORD*)( jmp+1 ) = (DWORD)( src+len - jmp ) - 5;
+	VirtualProtect( src, len, PAGE_EXECUTE_READWRITE, &dwBack );
+	src[0] = 0xE9;
+	*(DWORD*)( src+1 ) = (DWORD)( dst - src ) - 5;
+	VirtualProtect( src, len, dwBack, &dwBack );
+	FlushInstructionCache( GetCurrentProcess(), src, 0x10 );
+ 
+	return( jmp-len );
+}
+ 
+DWORD WINAPI dwMain( LPVOID lpArg )
+{
+	while( ( GetModuleHandleA( "ClientFX.fxd" ) == NULL ) )
+		Sleep( 25 );
+	
+	*( FLOAT* )( ADDR_SHOWFPS ) = 1.f; // Hook using show fraps actived
+ 
+	return EXIT_SUCCESS;
+}
+ 
+BOOL APIENTRY DllMain( HMODULE hModule,
+                       DWORD  ul_reason_for_call,
+                       LPVOID lpReserved
+					 )
+{
+	if (ul_reason_for_call == DLL_PROCESS_ATTACH)
+	{
+		DWORD MBTWCAddr = (DWORD)GetProcAddress( GetModuleHandleA( "Kernel32.dll" ), "MultiByteToWideChar" );
+		pMultiByte = (MultiByteToWideChar_t)DetourCreateE9( (PBYTE)MBTWCAddr, (PBYTE)nMultiByteToWideChar, 5 );
+		CreateThread( NULL, NULL, dwMain, NULL, NULL, NULL );
+	}
+	return TRUE;
+}
