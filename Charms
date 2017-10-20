@@ -1,0 +1,218 @@
+#pragma comment (lib, "d3dx9.lib")
+#pragma comment (lib, "d3d9.lib")
+ 
+#include <Windows.h>
+#include <d3d9.h>
+#include <d3dx9.h>
+#include <iostream>
+#include <fstream>
+#include <detours.h>
+#include <stdio.h>
+#include <vector>
+#include "d3d9types.h"
+ 
+using namespace std;
+ 
+//Chams
+#pragma intrinsic(_ReturnAddress)
+#define Player_ReturnAddress 0x6362A6
+//Chams
+ 
+#define HOOK(func,addy)	o##func = (t##func)DetourFunction((PBYTE)addy,(PBYTE)hk##func)
+#define D3D_RELEASE(D3D_PTR) if( D3D_PTR ){ D3D_PTR->Release(); D3D_PTR = NULL; }
+#define ES	0
+#define DIP	1
+#define RES 2
+ 
+DWORD VTable[3] = { 0 };
+DWORD WINAPI FindWin(LPVOID);
+DWORD D3DEndScene;
+DWORD D3DReset;
+DWORD D3DDrawIndexedPrimitive;
+DWORD WINAPI VirtualMethodTableRepatchingLoopToCounterExtensionRepatching(LPVOID);
+PDWORD Direct3D_VMTable = NULL;
+ 
+BYTE CodeFragmentES[5] = { 0, 0, 0, 0, 0 };
+BYTE CodeFragmentR[5] = { 0, 0, 0, 0, 0 };
+BYTE CodeFragmentDIP[5] = { 0, 0, 0, 0, 0 };
+ 
+HRESULT WINAPI Direct3DCreate9_VMTable(VOID);
+HRESULT WINAPI hkReset(LPDIRECT3DDEVICE9, D3DPRESENT_PARAMETERS*);
+typedef HRESULT(WINAPI* tEndScene)(LPDIRECT3DDEVICE9 Device);
+typedef HRESULT(WINAPI* DrawIndexedPrimitive_)(LPDIRECT3DDEVICE9 Device, D3DPRIMITIVETYPE Type, INT BaseVertexIndex, UINT MinIndex, UINT NumVertices, UINT StartIndex, UINT PrimitiveCount);
+typedef HRESULT(WINAPI* tDrawIndexedPrimitive)(LPDIRECT3DDEVICE9 Device, D3DPRIMITIVETYPE PrimType, INT BaseVertexIndex, UINT MinIndex, UINT NumVertices, UINT StartIndex, UINT PrimitiveCount);
+typedef HRESULT(WINAPI* tReset)(LPDIRECT3DDEVICE9, D3DPRESENT_PARAMETERS*);
+tReset oReset;
+DrawIndexedPrimitive_ oDrawIndexedPrimitive = NULL;
+tEndScene oEndScene;
+ 
+ 
+ 
+DWORD FindDevice(DWORD Len)
+{
+	DWORD dwObjBase = 0;
+ 
+	dwObjBase = (DWORD)LoadLibrary("d3d9.dll");
+	while (dwObjBase++ < dwObjBase + Len)
+	{
+		if ((*(WORD*)(dwObjBase + 0x00)) == 0x06C7
+			&& (*(WORD*)(dwObjBase + 0x06)) == 0x8689
+			&& (*(WORD*)(dwObjBase + 0x0C)) == 0x8689
+			) {
+			dwObjBase += 2; break;
+		}
+	}
+	return(dwObjBase);
+}
+ 
+DWORD GetDeviceAddress(int VTableIndex)
+{
+	PDWORD VTable;
+	*(DWORD*)&VTable = *(DWORD*)FindDevice(0x128000);
+	return VTable[VTableIndex];
+}
+ 
+//Generate Texture for chams
+LPDIRECT3DTEXTURE9 White;
+LPDIRECT3DTEXTURE9 Pink;
+LPDIRECT3DTEXTURE9 Black;
+LPDIRECT3DTEXTURE9 Blue;
+LPDIRECT3DTEXTURE9 Red;
+LPDIRECT3DTEXTURE9 Yellow;
+LPDIRECT3DTEXTURE9 Green;
+LPDIRECT3DTEXTURE9 Purple;
+LPDIRECT3DTEXTURE9 Cyan;
+LPDIRECT3DTEXTURE9 Turqoise;
+LPDIRECT3DTEXTURE9 Orange;
+//Generate Texture for chams
+ 
+ 
+ 
+//----------------------------------------------------------------------------------------------------//
+ 
+ 
+ 
+ 
+//Generate Texture for chams
+HRESULT GenerateTexture32(IDirect3DDevice9* pDevice, IDirect3DTexture9** pTexture, DWORD dwColor)
+{
+	if (FAILED(pDevice->CreateTexture(8, 8, 1, D3DUSAGE_DYNAMIC, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, pTexture, NULL)))
+		return E_FAIL;
+ 
+	D3DLOCKED_RECT d3dlr;
+	(*pTexture)->LockRect(0, &d3dlr, 0, 0);
+ 
+	BYTE* pDstRow = (BYTE*)d3dlr.pBits;
+	DWORD* pDst32;
+ 
+	for (int y = 0; y < 8; y++) {
+		pDst32 = (DWORD*)pDstRow;
+ 
+		for (int x = 0; x < 8; x++)
+			*pDst32++ = dwColor;
+ 
+		pDstRow += d3dlr.Pitch;
+	}
+ 
+	(*pTexture)->UnlockRect(0);
+ 
+	return S_OK;
+}
+//Generate Texture for chams
+ 
+HRESULT WINAPI hkDrawIndexedPrimitive(LPDIRECT3DDEVICE9 Device, D3DPRIMITIVETYPE PrimType, INT BaseVertexIndex, UINT MinIndex, UINT NumVertices, UINT StartIndex, UINT PrimitiveCount)
+{
+	//DIP
+ 
+	//Chams
+	void* ReturnAddress = _ReturnAddress();
+	if (ReturnAddress != NULL && ReturnAddress == (void *)Player_ReturnAddress)
+	{
+		Device->SetTexture(0, Red);
+		Device->SetRenderState(D3DRS_ZENABLE, false);
+		Device->DrawIndexedPrimitive(PrimType, BaseVertexIndex, MinIndex, NumVertices, StartIndex, PrimitiveCount);
+		Device->SetRenderState(D3DRS_ZENABLE, true);
+		Device->SetTexture(0, Blue);
+	}
+	//Chams
+ 
+	return oDrawIndexedPrimitive(Device, PrimType, BaseVertexIndex, MinIndex, NumVertices, StartIndex, PrimitiveCount);
+}
+ 
+HRESULT WINAPI hkReset(LPDIRECT3DDEVICE9 Device, D3DPRESENT_PARAMETERS* PresP)
+{
+	//Reset
+	return oReset(Device, PresP);
+}
+ 
+HRESULT WINAPI hkEndScene(LPDIRECT3DDEVICE9 Device)
+{
+	//Chams
+	GenerateTexture32(Device, &Green, D3DCOLOR_ARGB(255, 0, 255, 0));
+	GenerateTexture32(Device, &Red, D3DCOLOR_ARGB(255, 155, 0, 0));
+	GenerateTexture32(Device, &Blue, D3DCOLOR_ARGB(255, 0, 0, 255));
+	GenerateTexture32(Device, &Orange, D3DCOLOR_ARGB(255, 255, 165, 0));
+	GenerateTexture32(Device, &Yellow, D3DCOLOR_ARGB(155, 155, 155, 0));
+	GenerateTexture32(Device, &Pink, D3DCOLOR_ARGB(255, 255, 192, 203));
+	GenerateTexture32(Device, &Cyan, D3DCOLOR_ARGB(255, 0, 255, 255));
+	GenerateTexture32(Device, &Purple, D3DCOLOR_ARGB(255, 160, 32, 240));
+	GenerateTexture32(Device, &Black, D3DCOLOR_ARGB(255, 0, 0, 0));
+	GenerateTexture32(Device, &White, D3DCOLOR_ARGB(255, 255, 255, 255));
+	//Chams
+ 
+ 
+Device}
+ 
+ 
+LRESULT CALLBACK MsgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+void DX_Init(DWORD* table)
+{
+	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, MsgProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, "DX", NULL };
+	RegisterClassEx(&wc);
+	HWND hWnd = CreateWindow("DX", NULL, WS_OVERLAPPEDWINDOW, 100, 100, 300, 300, GetDesktopWindow(), NULL, wc.hInstance, NULL);
+	LPDIRECT3D9 pD3D = Direct3DCreate9(D3D_SDK_VERSION);
+	D3DPRESENT_PARAMETERS d3dpp;
+	ZeroMemory(&d3dpp, sizeof(d3dpp));
+	d3dpp.Windowed = TRUE;
+	d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+	d3dpp.BackBufferFormat = D3DFMT_UNKNOWN;
+	LPDIRECT3DDEVICE9 pd3dDevice;
+	pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pd3dDevice);
+	DWORD* pVTable = (DWORD*)pd3dDevice;
+	pVTable = (DWORD*)pVTable[0];
+ 
+	table[ES] = pVTable[42];
+	table[DIP] = pVTable[82];
+	table[RES] = pVTable[16];
+ 
+	DestroyWindow(hWnd);
+}
+ 
+//Hook
+DWORD WINAPI MyThread(LPVOID)
+{
+	while (GetModuleHandle("d3d9.dll") == NULL) {
+		Sleep(250);
+	}
+ 
+	DX_Init(VTable);
+ 
+	HOOK(EndScene, VTable[ES]);
+	HOOK(DrawIndexedPrimitive, VTable[DIP]);
+	HOOK(Reset, VTable[RES]);
+ 
+	return 0;
+}
+ 
+BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpvReserved)
+{
+	if (dwReason == DLL_PROCESS_ATTACH) {
+ 
+		CreateThread(0, 0, MyThread, 0, 0, 0);
+	}
+ 
+	return TRUE;
+}
